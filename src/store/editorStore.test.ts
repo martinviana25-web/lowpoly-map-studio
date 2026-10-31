@@ -136,6 +136,56 @@ describe('props', () => {
   });
 });
 
+describe('elementos individuales', () => {
+  const place = () => {
+    store.getState().placeProp(10.5, 10.5);
+    return store.getState().map.props.at(-1)!;
+  };
+
+  it('asigna ids únicos y borra por id con undo', () => {
+    const a = place();
+    const b = place();
+    expect(a.id).not.toBe(b.id);
+    store.getState().selectProp(a.id);
+    store.getState().deleteProp(a.id);
+    expect(store.getState().selectedPropId).toBeNull();
+    expect(store.getState().map.props.map((p) => p.id)).toEqual([b.id]);
+    store.getState().undo();
+    expect(store.getState().map.props.map((p) => p.id).sort()).toEqual([a.id, b.id].sort());
+  });
+
+  it('selecciona por clic y se limpia si undo elimina el elemento', () => {
+    const a = place();
+    // rayo vertical hacia abajo sobre el elemento
+    store.getState().selectPropByRay([10.5, 20, 10.5], [0, -1, 0]);
+    expect(store.getState().selectedPropId).toBe(a.id);
+    store.getState().undo();
+    expect(store.getState().selectedPropId).toBeNull();
+  });
+
+  it('funde ediciones seguidas en una entrada y deshace al valor original', () => {
+    const a = place();
+    const start = store.getState().undoStack.length;
+    store.getState().updateProp(a.id, { scale: 2 });
+    store.getState().updateProp(a.id, { scale: 3 });
+    store.getState().updateProp(a.id, { colors: ['#ff0000', '#00ff00'] });
+    expect(store.getState().undoStack).toHaveLength(start + 1);
+    expect(store.getState().map.props[0]).toMatchObject({ scale: 3, colors: ['#ff0000', '#00ff00'] });
+    store.getState().undo();
+    expect(store.getState().map.props[0]).toEqual(a);
+    store.getState().redo();
+    expect(store.getState().map.props[0].scale).toBe(3);
+  });
+
+  it('el undo de un alta sigue funcionando tras editar el elemento', () => {
+    const a = place();
+    store.getState().updateProp(a.id, { rotationY: 1 });
+    store.getState().undo();
+    store.getState().undo();
+    expect(store.getState().map.props).toHaveLength(0);
+  });
+});
+
 describe('newMap y loadMap', () => {
   it('limpian el historial', () => {
     strokeAcross(20, 22);

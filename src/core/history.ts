@@ -27,6 +27,8 @@ export interface PropsDelta {
   kind: 'props';
   added: PropInstance[];
   removed: PropInstance[];
+  /** Ediciones en sitio: copias antes/después, emparejadas por id. */
+  updated?: { before: PropInstance; after: PropInstance }[];
 }
 
 export type HistoryEntry = TerrainDelta | PropsDelta;
@@ -105,8 +107,14 @@ export interface ApplyResult {
 export function applyEntry(map: MapData, entry: HistoryEntry, dir: 'undo' | 'redo'): ApplyResult {
   if (entry.kind === 'props') {
     const add = dir === 'undo' ? entry.removed : entry.added;
-    const drop = new Set(dir === 'undo' ? entry.added : entry.removed);
-    map.props = map.props.filter((p) => !drop.has(p)).concat(add);
+    const drop = new Set((dir === 'undo' ? entry.added : entry.removed).map((p) => p.id));
+    const swap = new Map(
+      (entry.updated ?? []).map((u) => [u.before.id, dir === 'undo' ? u.before : u.after]),
+    );
+    map.props = map.props
+      .filter((p) => !drop.has(p.id))
+      .map((p) => swap.get(p.id) ?? p)
+      .concat(add);
     return { rect: null, waterChanged: false, propsChanged: true };
   }
   for (const [target, delta] of [

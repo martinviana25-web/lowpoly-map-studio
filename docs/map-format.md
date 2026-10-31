@@ -13,7 +13,7 @@ Archivo JSON por capas. Coordenadas Y-up, celda de `cellSize` = 1 unidad. El ter
     "biomePalette": ["pasto", "arena", "roca", "pantano", "nieve", "agua"]
   },
   "water": [[12, 30, 0.5]],
-  "props": [{ "asset": "arbol", "position": [10.5, 2.1, 7.25], "rotationY": 1.57, "scale": 1 }]
+  "props": [{ "id": "p-1", "asset": "arbol", "position": [10.5, 2.1, 7.25], "rotationY": 1.57, "scale": 1 }]
 }
 ```
 
@@ -22,10 +22,12 @@ Archivo JSON por capas. Coordenadas Y-up, celda de `cellSize` = 1 unidad. El ter
 | `terrain.heights` | Altura por vértice, plana y row-major: `(width+1)*(depth+1)` valores, índice `z*(width+1)+x`. Rango -8 a 32, 3 decimales. |
 | `terrain.biomes` | Índice de `biomePalette` por celda, row-major: `width*depth` valores, índice `z*width+x`. |
 | `water` | Lista dispersa de celdas con agua: `[x, z, nivel]`. |
+| `props[].id` | Identificador único del elemento dentro del mapa (hasta 256 caracteres). Opcional al leer: si falta o se repite, el editor asigna uno nuevo. |
 | `props[].asset` | Id del catálogo (`arbol`, `pino`, `arbusto`, `flor`, `roca-chica`, `roca-grande`, `casa`, `torre`, `muro`) o nombre de archivo de un asset importado. |
 | `props[].position` | Base del objeto en `[x, y, z]`. |
 | `props[].rotationY` | Radianes alrededor de Y. |
 | `props[].scale` | Escala uniforme. |
+| `props[].colors` | Opcional. Lista de hasta 16 colores `"#rrggbb"`, uno por pieza del asset del catálogo, en el orden de sus piezas. Si falta, se usan los colores originales. Los importadores de `examples/` lo ignoran. |
 
 Los assets externos no viajan dentro del JSON: se referencian por nombre y hay que volver a
 cargarlos en cada sesión. Un prop cuyo asset no esté cargado se ve como caja y se conserva al

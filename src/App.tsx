@@ -1,5 +1,6 @@
 import { MapCanvas } from './components/canvas/MapCanvas.tsx';
 import { AssetPanel } from './components/panels/AssetPanel.tsx';
+import { ElementPanel } from './components/panels/ElementPanel.tsx';
 import { MapPanel } from './components/panels/MapPanel.tsx';
 import { PropPalette } from './components/panels/PropPalette.tsx';
 import { ToolPanel } from './components/panels/ToolPanel.tsx';
@@ -46,6 +47,7 @@ export default function App() {
           <MapCanvas />
         </main>
         <aside className="w-64 shrink-0 overflow-y-auto border-l border-white/10 bg-[#14171d]">
+          <ElementPanel />
           <MapPanel />
           <AssetPanel />
         </aside>

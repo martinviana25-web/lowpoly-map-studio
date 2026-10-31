@@ -7,6 +7,7 @@ const TOOLS: readonly { id: Tool; label: string }[] = [
   { id: 'biome', label: 'Bioma' },
   { id: 'prop', label: 'Colocar' },
   { id: 'erase', label: 'Borrar' },
+  { id: 'select', label: 'Seleccionar' },
 ];
 
 const BUTTON = 'rounded px-3 py-1.5 text-sm transition-colors disabled:opacity-40';

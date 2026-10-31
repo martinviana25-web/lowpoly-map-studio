@@ -20,10 +20,22 @@ export const BIOME = {
 export type BiomeId = (typeof BIOME)[keyof typeof BIOME];
 
 export interface PropInstance {
+  /** Identificador estable y único dentro del mapa. */
+  id: string;
   asset: string;
   position: [number, number, number];
   rotationY: number;
   scale: number;
+  /** Color "#rrggbb" por pieza del catálogo; ausente = colores originales. */
+  colors?: string[];
+}
+
+/** Id corto aleatorio que no choca con `taken`. */
+export function createPropId(taken: ReadonlySet<string>): string {
+  let id: string;
+  do id = `p-${Math.random().toString(36).slice(2, 8)}`;
+  while (taken.has(id));
+  return id;
 }
 
 export interface MapData {

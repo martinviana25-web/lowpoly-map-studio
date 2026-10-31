@@ -25,7 +25,7 @@ while (map.props.length < PROP_COUNT) {
   const scale = 0.8 + random() * 0.4;
   const asset = PROP_CATALOG[Math.floor(random() * PROP_CATALOG.length)].id;
   if (map.biomes[cellIndex(map, Math.floor(x), Math.floor(z))] === BIOME.agua) continue;
-  map.props.push({ asset, position: [x, sampleHeight(map, x, z), z], rotationY, scale });
+  map.props.push({ id: `p-${map.props.length}`, asset, position: [x, sampleHeight(map, x, z), z], rotationY, scale });
 }
 
 const target = new URL('../examples/sample-map.json', import.meta.url);

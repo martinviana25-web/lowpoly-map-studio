@@ -4,6 +4,7 @@ import {
   HEIGHT_MIN,
   MAX_MAP_SIZE,
   cellIndex,
+  createPropId,
   type MapData,
   type PropInstance,
 } from './types.ts';
@@ -15,6 +16,8 @@ export const MAX_DISTINCT_ASSETS = 256;
 export const MAX_PROP_SCALE = 1000;
 const MIN_PROP_SCALE = 0.001;
 const MAX_ROTATION = 1000;
+const MAX_PROP_COLORS = 16;
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 /** Holgura sobre el rango de alturas y los bordes del mapa. */
 const MARGIN = 1;
 
@@ -49,10 +52,12 @@ export function serializeMap(map: MapData): string {
     },
     water,
     props: map.props.map((p) => ({
+      id: p.id,
       asset: p.asset,
       position: p.position.map(round3),
       rotationY: round3(p.rotationY),
       scale: round3(p.scale),
+      ...(p.colors && { colors: p.colors }),
     })),
   });
 }
@@ -91,7 +96,9 @@ function inHeightRange(y: number): boolean {
 function parseProp(value: unknown, index: number, width: number, depth: number): PropInstance {
   const where = `props[${index}]`;
   if (!isObject(value)) fail(`${where} no es un objeto.`);
-  const { position, rotationY, scale } = value;
+  const { position, rotationY, scale, colors } = value;
+  // Mapas anteriores no traen id: el que falte se completa en parseProps.
+  const id = value.id === undefined ? '' : parseText(`${where}.id`, value.id);
   const asset = parseText(`${where}.asset`, value.asset);
   if (asset === '') fail(`${where}.asset debe ser un texto no vacío.`);
   if (!Array.isArray(position) || position.length !== 3 || !position.every(isFiniteNumber)) {
@@ -108,12 +115,35 @@ function parseProp(value: unknown, index: number, width: number, depth: number):
   if (!isFiniteNumber(scale) || scale < MIN_PROP_SCALE || scale > MAX_PROP_SCALE) {
     fail(`${where}.scale debe estar entre ${MIN_PROP_SCALE} y ${MAX_PROP_SCALE}.`);
   }
-  return { asset, position: [x, y, z], rotationY, scale };
+  const prop: PropInstance = { id, asset, position: [x, y, z], rotationY, scale };
+  if (colors !== undefined) {
+    if (
+      !Array.isArray(colors) ||
+      colors.length > MAX_PROP_COLORS ||
+      !colors.every((c) => typeof c === 'string' && HEX_COLOR.test(c))
+    ) {
+      fail(`${where}.colors debe ser una lista de hasta ${MAX_PROP_COLORS} colores "#rrggbb".`);
+    }
+    prop.colors = colors;
+  }
+  return prop;
 }
 
 function parseProps(props: unknown[], width: number, depth: number): PropInstance[] {
   if (props.length > MAX_PROPS) fail(`"props" supera el máximo de ${MAX_PROPS}.`);
   const parsed = props.map((prop, i) => parseProp(prop, i, width, depth));
+  // Ids ausentes o repetidos se reasignan; el primero conserva el suyo.
+  const taken = new Set<string>();
+  for (const prop of parsed) {
+    if (prop.id !== '' && !taken.has(prop.id)) taken.add(prop.id);
+    else prop.id = '';
+  }
+  for (const prop of parsed) {
+    if (prop.id === '') {
+      prop.id = createPropId(taken);
+      taken.add(prop.id);
+    }
+  }
   if (new Set(parsed.map((p) => p.asset)).size > MAX_DISTINCT_ASSETS) {
     fail(`"props" usa más de ${MAX_DISTINCT_ASSETS} assets distintos.`);
   }

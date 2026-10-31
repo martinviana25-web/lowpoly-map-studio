@@ -151,3 +151,16 @@ export function createPieceGeometry(piece: PropPiece): BufferGeometry {
   geometry.translate(...piece.offset);
   return geometry;
 }
+
+/** Altura aproximada del prop sin escalar; 1 para assets que no son del catálogo. */
+export function propHeight(asset: string): number {
+  const pieces = BY_ID.get(asset)?.pieces;
+  if (!pieces) return 1;
+  return Math.max(
+    ...pieces.map((p) => {
+      const s = p.shape;
+      const half = s.type === 'box' ? s.size[1] / 2 : s.type === 'cone' || s.type === 'cylinder' ? s.height / 2 : s.radius;
+      return p.offset[1] + half * (p.scale?.[1] ?? 1);
+    }),
+  );
+}

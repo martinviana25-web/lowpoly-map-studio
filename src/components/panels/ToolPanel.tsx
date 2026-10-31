@@ -10,7 +10,7 @@ interface SliderProps {
   onChange: (value: number) => void;
 }
 
-function Slider({ label, value, min, max, step, onChange }: SliderProps) {
+export function Slider({ label, value, min, max, step, onChange }: SliderProps) {
   return (
     <label className="block text-xs text-white/70">
       <span className="flex justify-between">

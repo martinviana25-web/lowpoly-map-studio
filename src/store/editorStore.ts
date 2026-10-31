@@ -1,10 +1,18 @@
 import { create } from 'zustand';
 import { flatten, lower, paintBiome, raise, type BrushEdit, type BrushParams } from '../core/brushes.ts';
 import { generateMap, sampleHeight, type GenerateParams } from '../core/heightmap.ts';
-import { StrokeRecorder, applyEntry, pushEntry, type HistoryEntry } from '../core/history.ts';
+import {
+  StrokeRecorder,
+  applyEntry,
+  pushEntry,
+  type HistoryEntry,
+  type PropsDelta,
+} from '../core/history.ts';
+import { pickPropByRay } from '../core/pickProp.ts';
 import { PROP_CATALOG } from '../core/propCatalog.ts';
 import {
   BIOME,
+  createPropId,
   mergeRects,
   type BiomeId,
   type CellRect,
@@ -12,9 +20,13 @@ import {
   type PropInstance,
 } from '../core/types.ts';
 
-export type Tool = 'raise' | 'lower' | 'flatten' | 'biome' | 'prop' | 'erase';
+export type Tool = 'raise' | 'lower' | 'flatten' | 'biome' | 'prop' | 'erase' | 'select';
 
 export const PICK_RADIUS = 1.5;
+/** Ediciones del mismo elemento dentro de esta ventana se funden en una entrada de historial. */
+const COALESCE_MS = 700;
+
+export type PropPatch = Partial<Pick<PropInstance, 'scale' | 'rotationY' | 'colors'>>;
 
 export interface ExternalAsset {
   /** Nombre del archivo; es lo que se guarda en el JSON. */
@@ -36,6 +48,8 @@ export interface EditorState {
   biome: BiomeId;
   selectedAsset: string;
   placement: PlacementParams;
+  /** Id del elemento seleccionado; null si no hay. */
+  selectedPropId: string | null;
   assets: ExternalAsset[];
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
@@ -61,6 +75,12 @@ export interface EditorState {
   placeProp: (x: number, z: number) => void;
   /** Quita el prop más cercano dentro del radio de pick. */
   removeProp: (x: number, z: number, radius?: number) => void;
+  /** Selecciona el elemento más cercano al rayo del puntero (o deselecciona). */
+  selectPropByRay: (origin: readonly [number, number, number], direction: readonly [number, number, number]) => void;
+  selectProp: (id: string | null) => void;
+  /** Edita un elemento; las ediciones seguidas del mismo elemento forman una sola entrada de historial. */
+  updateProp: (id: string, patch: PropPatch) => void;
+  deleteProp: (id: string) => void;
   undo: () => void;
   redo: () => void;
   newMap: (params: GenerateParams) => void;
@@ -77,6 +97,19 @@ interface ActiveStroke {
   flattenTarget: number;
 }
 
+function findPropAt(map: MapData, x: number, z: number, radius: number): PropInstance | null {
+  let nearest: PropInstance | null = null;
+  let best = radius;
+  for (const prop of map.props) {
+    const distance = Math.hypot(prop.position[0] - x, prop.position[2] - z);
+    if (distance <= best) {
+      best = distance;
+      nearest = prop;
+    }
+  }
+  return nearest;
+}
+
 const BRUSH_TOOLS: readonly Tool[] = ['raise', 'lower', 'flatten', 'biome'];
 
 export function isBrushTool(tool: Tool): boolean {
@@ -86,6 +119,7 @@ export function isBrushTool(tool: Tool): boolean {
 export const useEditorStore = create<EditorState>((set, get) => {
   // Fuera del estado: nada de React depende del stroke en curso.
   let stroke: ActiveStroke | null = null;
+  let lastUpdate: { entry: PropsDelta; at: number } | null = null;
 
   const computeEdit = (
     state: EditorState,
@@ -121,10 +155,20 @@ export const useEditorStore = create<EditorState>((set, get) => {
     set((s) => ({ undoStack: pushEntry(s.undoStack, entry), redoStack: [] }));
   };
 
+  const afterHistory = (): void => {
+    lastUpdate = null;
+    const { selectedPropId, map } = get();
+    if (selectedPropId && !map.props.some((p) => p.id === selectedPropId)) {
+      set({ selectedPropId: null });
+    }
+  };
+
   const replaceMap = (map: MapData): void => {
     stroke = null;
+    lastUpdate = null;
     set((s) => ({
       map,
+      selectedPropId: null,
       undoStack: [],
       redoStack: [],
       dirtyRect: null,
@@ -142,6 +186,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     biome: BIOME.pasto,
     selectedAsset: PROP_CATALOG[0].id,
     placement: { rotationY: 0, scale: 1, randomize: true },
+    selectedPropId: null,
     assets: [],
     undoStack: [],
     redoStack: [],
@@ -185,6 +230,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const { map, selectedAsset, placement } = get();
       const { randomize, rotationY, scale } = placement;
       const prop: PropInstance = {
+        id: createPropId(new Set(map.props.map((p) => p.id))),
         asset: selectedAsset,
         position: [x, sampleHeight(map, x, z), z],
         rotationY: randomize ? Math.random() * Math.PI * 2 : rotationY,
@@ -196,19 +242,47 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     removeProp: (x, z, radius = PICK_RADIUS) => {
+      const nearest = findPropAt(get().map, x, z, radius);
+      if (nearest) get().deleteProp(nearest.id);
+    },
+
+    selectPropByRay: (origin, direction) => {
+      set({ selectedPropId: pickPropByRay(get().map.props, origin, direction)?.id ?? null });
+    },
+
+    selectProp: (selectedPropId) => set({ selectedPropId }),
+
+    updateProp: (id, patch) => {
+      const { map, undoStack } = get();
+      const before = map.props.find((p) => p.id === id);
+      if (!before) return;
+      const after: PropInstance = { ...before, ...patch };
+      map.props = map.props.map((p) => (p === before ? after : p));
+      const now = Date.now();
+      const top = undoStack.at(-1);
+      const merge =
+        lastUpdate && top === lastUpdate.entry && now - lastUpdate.at < COALESCE_MS
+          ? lastUpdate.entry.updated?.find((u) => u.after.id === id)
+          : undefined;
+      const entry: PropsDelta = {
+        kind: 'props',
+        added: [],
+        removed: [],
+        updated: [{ before: merge?.before ?? before, after }],
+      };
+      if (merge) set((s) => ({ undoStack: [...s.undoStack.slice(0, -1), entry] }));
+      else commit(entry);
+      lastUpdate = { entry, at: now };
+      markChanged(null, false, true);
+    },
+
+    deleteProp: (id) => {
       const { map } = get();
-      let nearest: PropInstance | null = null;
-      let best = radius;
-      for (const prop of map.props) {
-        const distance = Math.hypot(prop.position[0] - x, prop.position[2] - z);
-        if (distance <= best) {
-          best = distance;
-          nearest = prop;
-        }
-      }
-      if (!nearest) return;
-      map.props = map.props.filter((p) => p !== nearest);
-      commit({ kind: 'props', added: [], removed: [nearest] });
+      const prop = map.props.find((p) => p.id === id);
+      if (!prop) return;
+      map.props = map.props.filter((p) => p !== prop);
+      commit({ kind: 'props', added: [], removed: [prop] });
+      if (get().selectedPropId === id) set({ selectedPropId: null });
       markChanged(null, false, true);
     },
 
@@ -218,6 +292,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const entry = undoStack.at(-1);
       if (!entry) return;
       const result = applyEntry(map, entry, 'undo');
+      afterHistory();
       set({ undoStack: undoStack.slice(0, -1), redoStack: [...redoStack, entry] });
       markChanged(result.rect, result.waterChanged, result.propsChanged);
     },
@@ -228,6 +303,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const entry = redoStack.at(-1);
       if (!entry) return;
       const result = applyEntry(map, entry, 'redo');
+      afterHistory();
       set({ undoStack: pushEntry(undoStack, entry), redoStack: redoStack.slice(0, -1) });
       markChanged(result.rect, result.waterChanged, result.propsChanged);
     },

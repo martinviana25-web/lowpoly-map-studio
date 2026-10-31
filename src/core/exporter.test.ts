@@ -15,8 +15,8 @@ function sampleMap(): MapData {
   map.water.fill(Number.NaN);
   map.water[70] = 1.25;
   map.props = [
-    { asset: 'arbol', position: [1.5, 2.25, 3.5], rotationY: 0.5, scale: 1.2 },
-    { asset: 'no-cargado.glb', position: [4, 5, 6], rotationY: 0, scale: 1 },
+    { id: 'a', asset: 'arbol', position: [1.5, 2.25, 3.5], rotationY: 0.5, scale: 1.2 },
+    { id: 'b', asset: 'no-cargado.glb', position: [4, 5, 6], rotationY: 0, scale: 1 },
   ];
   return map;
 }
@@ -26,6 +26,34 @@ function mutated(change: (data: any) => void): string {
   change(data);
   return JSON.stringify(data);
 }
+
+describe('ids y colores de props', () => {
+  it('conserva id y colores en el roundtrip', () => {
+    const map = sampleMap();
+    map.props[0].colors = ['#aabbcc', '#112233'];
+    const result = parseMap(serializeMap(map));
+    expect(result.ok && result.map.props).toEqual(map.props);
+  });
+
+  it('asigna ids a mapas viejos y a duplicados, sin tocar el primero', () => {
+    const data = JSON.parse(serializeMap(sampleMap()));
+    delete data.props[0].id;
+    data.props[1].id = 'x';
+    data.props.push({ ...data.props[1] });
+    const result = parseMap(JSON.stringify(data));
+    if (!result.ok) throw new Error(result.error);
+    const ids = result.map.props.map((p) => p.id);
+    expect(new Set(ids).size).toBe(3);
+    expect(ids[1]).toBe('x');
+    expect(ids.every((id) => id !== '')).toBe(true);
+  });
+
+  it('rechaza colores inválidos', () => {
+    const data = JSON.parse(serializeMap(sampleMap()));
+    data.props[0].colors = ['rojo'];
+    expect(parseMap(JSON.stringify(data)).ok).toBe(false);
+  });
+});
 
 describe('serializeMap', () => {
   it('produce la forma por capas con agua dispersa y 3 decimales', () => {

@@ -44,6 +44,15 @@ function PointerTool() {
 
     const onDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      if (useEditorStore.getState().tool === 'select') {
+        pick(event); // deja el rayo en `raycaster`
+        const { origin, direction } = raycaster.ray;
+        useEditorStore.getState().selectPropByRay(
+          [origin.x, origin.y, origin.z],
+          [direction.x, direction.y, direction.z],
+        );
+        return;
+      }
       const hit = pick(event);
       if (!hit) return;
       const store = useEditorStore.getState();

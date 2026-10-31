@@ -60,13 +60,27 @@ describe('StrokeRecorder', () => {
 describe('applyEntry', () => {
   it('undo y redo de props restauran la lista', () => {
     const map = createFlatMap('t', 8, 8);
-    const prop: PropInstance = { asset: 'arbol', position: [1, 1, 1], rotationY: 0, scale: 1 };
+    const prop: PropInstance = { id: 'a', asset: 'arbol', position: [1, 1, 1], rotationY: 0, scale: 1 };
     map.props = [prop];
     const entry: HistoryEntry = { kind: 'props', added: [prop], removed: [] };
     applyEntry(map, entry, 'undo');
     expect(map.props).toEqual([]);
     applyEntry(map, entry, 'redo');
     expect(map.props).toEqual([prop]);
+  });
+});
+
+describe('applyEntry con updated', () => {
+  it('undo y redo reemplazan por id aunque el objeto cambie', () => {
+    const map = createFlatMap('t', 8, 8);
+    const before: PropInstance = { id: 'a', asset: 'arbol', position: [1, 1, 1], rotationY: 0, scale: 1 };
+    const after = { ...before, scale: 2, colors: ['#ff0000'] };
+    map.props = [{ ...after }];
+    const entry: HistoryEntry = { kind: 'props', added: [], removed: [], updated: [{ before, after }] };
+    applyEntry(map, entry, 'undo');
+    expect(map.props).toEqual([before]);
+    applyEntry(map, entry, 'redo');
+    expect(map.props).toEqual([after]);
   });
 });
 
